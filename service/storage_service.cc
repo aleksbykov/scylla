@@ -2056,6 +2056,8 @@ class topology_coordinator {
                         co_await _group0.make_nonvoter(replaced_node_id);
                     }
                 }
+                
+                utils::get_local_injector().inject("crash_coordinator_before_stream", [] { abort(); });
 
                 raft_topology_cmd cmd{raft_topology_cmd::command::stream_ranges};
                 try {
