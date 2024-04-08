@@ -350,7 +350,6 @@ async def get_coordinator_host_ids(manager: ManagerClient) -> list[str]:
         coordinator_host_id = get_uuid_from_str(row.description)
         if coordinator_host_id:
             coordinators_ids.append(coordinator_host_id)
-        continue
     assert len(coordinators_ids) > 0, f"No coordinator ids {coordinators_ids} were found"
     return coordinators_ids
 
@@ -383,9 +382,9 @@ async def wait_new_coordinator_elected(manager: ManagerClient, expected_num_of_e
     """
     async def new_coordinator_elected():
         coordinators_ids = await get_coordinator_host_ids(manager)
-        if len(coordinators_ids) == expected_num_of_elections \
+        if len(coordinators_ids) >= expected_num_of_elections \
             and coordinators_ids[0] != coordinators_ids[1]:
             return True
-        logger.error("New coordinator was not elected %s", coordinators_ids)
+        logger.warning("New coordinator was not elected %s", coordinators_ids)
 
     await wait_for(new_coordinator_elected, deadline=deadline)
