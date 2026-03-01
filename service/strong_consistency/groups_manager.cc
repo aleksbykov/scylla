@@ -103,8 +103,8 @@ auto raft_server::begin_read(abort_source& as) -> begin_read_result {
 groups_manager::groups_manager(netw::messaging_service& ms, 
         raft_group_registry& raft_gr, cql3::query_processor& qp,
         replica::database& db, service::migration_manager& mm, db::system_keyspace& sys_ks, gms::feature_service& features,
-        gms::gossiper& gossiper,
-        db::raft_commitlog_replay_buffer& raft_replay_buffer)
+        db::raft_commitlog_replay_buffer& raft_replay_buffer,
+        gms::gossiper& gossiper)
     : _ms(ms)
     , _raft_gr(raft_gr)
     , _qp(qp)
@@ -114,6 +114,7 @@ groups_manager::groups_manager(netw::messaging_service& ms,
     , _features(features)
     , _gossiper(gossiper)
     , _raft_replay_buffer(raft_replay_buffer)
+    , _gossiper(gossiper)
 {
     init_messaging_service();
 }
@@ -233,9 +234,18 @@ void groups_manager::schedule_raft_groups_deletion(bool all) {
 }
 
 future<> groups_manager::wait_for_groups_to_start(lowres_clock::time_point timeout) {
-    while (!_starting_groups.empty()) {
-        auto& state = _starting_groups.front();
-        co_await state.server_control_op.get_future(timeout); // the state is unlinked when this completes
+    while (true) {
+        const auto it = std::ranges::find_if(_raft_groups, [](const auto& p) {
+            auto& state = p.second;
+            return !state.gate->is_closed() && !state.server_control_op.available();
+        });
+        if (it == _raft_groups.end()) {
+            break;
+        }
+
+        const auto& [id, state] = *it;
+        logger.info("waiting for group {} to start", id);
+        co_await state.server_control_op.get_future(timeout);
     }
 }
 
@@ -485,6 +495,7 @@ void groups_manager::start() {
 
     if (_pending_tm) {
         update(std::move(_pending_tm));
+        co_await wait_for_groups_to_start(lowres_clock::now() + std::chrono::seconds(30));
     }
 }
 
