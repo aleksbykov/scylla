@@ -234,18 +234,9 @@ void groups_manager::schedule_raft_groups_deletion(bool all) {
 }
 
 future<> groups_manager::wait_for_groups_to_start(lowres_clock::time_point timeout) {
-    while (true) {
-        const auto it = std::ranges::find_if(_raft_groups, [](const auto& p) {
-            auto& state = p.second;
-            return !state.gate->is_closed() && !state.server_control_op.available();
-        });
-        if (it == _raft_groups.end()) {
-            break;
-        }
-
-        const auto& [id, state] = *it;
-        logger.info("waiting for group {} to start", id);
-        co_await state.server_control_op.get_future(timeout);
+    while (!_starting_groups.empty()) {
+        auto& state = _starting_groups.front();
+        co_await state.server_control_op.get_future(timeout); // the state is unlinked when this completes
     }
 }
 
